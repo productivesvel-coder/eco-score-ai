@@ -12,7 +12,7 @@ st.markdown("""
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #2e7d32; color: white; }
     .stTextArea>div>div>textarea { border-radius: 10px; }
     </style>
-    """, unsafe_allow_now_now=True)
+    """, unsafe_allow_html=True)
 
 st.title("🌍 Sustainability Compatibility Index")
 st.markdown("---")
