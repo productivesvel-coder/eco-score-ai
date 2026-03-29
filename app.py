@@ -17,7 +17,7 @@ st.markdown("""
 st.title("🌍 Sustainability Compatibility Index")
 st.markdown("---")
 
-# --- INDIAN CITIES DATABASE (70+ Cities) ---
+# --- INDIAN CITIES DATABASE ---
 indian_cities = {
     "Andhra Pradesh": {"Visakhapatnam": (17.6868, 83.2185), "Vijayawada": (16.5062, 80.6480), "Tirupati": (13.6285, 79.4192)},
     "Arunachal Pradesh": {"Itanagar": (27.0844, 93.6053)},
@@ -50,78 +50,60 @@ indian_cities = {
     "Union Territories": {"Delhi": (28.6139, 77.2090), "Chandigarh": (30.7333, 76.7794), "Puducherry": (11.9416, 79.8083), "Srinagar": (34.0837, 74.7973), "Jammu": (32.7266, 74.8570)}
 }
 
-# --- SIDEBAR: LOCATION SETTINGS ---
+# --- SIDEBAR: LOCATION ---
 with st.sidebar:
     st.header("📍 Project Location")
-    location_mode = st.selectbox("Select Location Method", ["Indian Cities", "Current Location", "Manual Coordinates"])
+    location_mode = st.selectbox("Method", ["Indian Cities", "Current Location", "Manual"])
     
-    # Default values
     lat, lon = 13.0827, 80.2707 
 
     if location_mode == "Indian Cities":
-        state_choice = st.selectbox("Select State", list(indian_cities.keys()))
-        city_choice = st.selectbox("Select City", list(indian_cities[state_choice].keys()))
+        state_choice = st.selectbox("State", list(indian_cities.keys()))
+        city_choice = st.selectbox("City", list(indian_cities[state_choice].keys()))
         lat, lon = indian_cities[state_choice][city_choice]
-        st.info(f"Lat: {lat}, Lon: {lon}")
-
     elif location_mode == "Current Location":
-        st.warning("Ensure browser GPS is enabled.")
         loc = get_geolocation()
         if loc:
-            lat = loc['coords']['latitude']
-            lon = loc['coords']['longitude']
-            st.success(f"GPS Active: {lat:.4f}, {lon:.4f}")
+            lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
+            st.success(f"GPS Active")
         else:
-            st.info("Waiting for GPS data...")
+            st.info("Waiting for GPS...")
+    elif location_mode == "Manual":
+        lat = st.number_input("Lat", value=13.0827)
+        lon = st.number_input("Lon", value=80.2707)
 
-    elif location_mode == "Manual Coordinates":
-        lat = st.number_input("Latitude", value=13.0827, format="%.4f")
-        lon = st.number_input("Longitude", value=80.2707, format="%.4f")
-
-# --- MAIN PAGE: PROJECT INPUT ---
+# --- MAIN PAGE ---
 col1, col2 = st.columns([1.5, 1])
 
 with col1:
     st.subheader("📋 Project Details")
-    project_title = st.text_input("Project Name", placeholder="e.g., Solar Microgrid for Village X")
-    project_desc = st.text_area("Detailed Description", height=150, placeholder="Describe the energy/sustainability goals...")
-    uploaded_file = st.file_uploader("Attach Project Document (PDF)", type=["pdf"])
+    project_title = st.text_input("Project Name")
+    project_desc = st.text_area("Description (Paste example here)")
+    uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 
 with col2:
     st.subheader("🎯 Result")
     result_card = st.empty()
-    result_card.info("Enter details and click 'Analyze' to generate score.")
 
-# --- EXECUTION BUTTON ---
 if st.button("🚀 Analyze Sustainability Index"):
     if project_title and project_desc:
-        with st.spinner('Accessing Meteorological Data & Running Gemini 3.1...'):
-            # REPLACE WITH YOUR ACTUAL MAKE.COM WEBHOOK URL
-            webhook_url = "https://hook.eu1.make.com/8t8duu1vrxtai37lpa8tnqdulxo9mgeu?lat=13.08&lon=80.27&project=SolarPowerPlant"
+        with st.spinner('Connecting to Gemini AI...'):
+            # PASTE YOUR CLEAN URL HERE (WITHOUT THE ? AT THE END)
+            webhook_url = "https://hook.eu1.make.com/8t8duu1vrxtai37lpa8tnqdulxo9mgeu"
             
-            # Prepare data
-            full_context = f"Title: {project_title}\nDescription: {project_desc}"
-            if uploaded_file:
-                full_context += f"\n[Attachment: {uploaded_file.name}]"
-
-            payload = {
-                "lat": lat,
-                "lon": lon,
-                "project": full_context
-            }
+            payload = {"lat": lat, "lon": lon, "project": f"{project_title}: {project_desc}"}
             
             try:
-                # Sending data to Make.com
-                response = requests.get(webhook_url, params=payload)
+                # Increased timeout to 60 seconds
+                response = requests.get(webhook_url, params=payload, timeout=60)
                 
                 if response.status_code == 200:
                     st.balloons()
-                    result_card.success("Analysis Complete")
-                    st.markdown("### AI Report:")
-                    st.write(response.text)
+                    st.markdown("### AI Sustainability Report:")
+                    st.info(response.text)
                 else:
-                    st.error("Make.com is not responding. Check your Scheduling Switch.")
+                    st.error(f"Server error: {response.status_code}")
             except Exception as e:
-                st.error(f"Error connecting to API: {e}")
+                st.error("Make.com timed out. Check your scenario scheduling!")
     else:
-        st.warning("Please provide both a Project Name and a Description.")
+        st.warning("Please fill in project details.")
