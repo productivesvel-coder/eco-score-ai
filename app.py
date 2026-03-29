@@ -18,7 +18,7 @@ if st.button("Analyze Sustainability"):
     if project_name:
         with st.spinner('AI is analyzing weather patterns...'):
             # REPLACE THE URL BELOW WITH YOUR MAKE.COM WEBHOOK URL
-            webhook_url = "YOUR_WEBHOOK_URL_HERE"
+            webhook_url = "https://hook.eu1.make.com/8t8duu1vrxtai37lpa8tnqdulxo9mgeu?lat=13.08&lon=80.27&project=SolarPowerPlant"
             
             payload = {
                 "lat": lat,
