@@ -2,9 +2,20 @@ import streamlit as st
 import requests
 from streamlit_js_eval import get_geolocation
 
+# Page Configuration
 st.set_page_config(page_title="EcoScore AI India", page_icon="🌱", layout="wide")
 
+# Custom CSS for a professional look
+st.markdown("""
+    <style>
+    .main { background-color: #f5f7f9; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #2e7d32; color: white; }
+    .stTextArea>div>div>textarea { border-radius: 10px; }
+    </style>
+    """, unsafe_allow_now_now=True)
+
 st.title("🌍 Sustainability Compatibility Index")
+st.markdown("---")
 
 # --- INDIAN CITIES DATABASE (70+ Cities) ---
 indian_cities = {
@@ -39,30 +50,78 @@ indian_cities = {
     "Union Territories": {"Delhi": (28.6139, 77.2090), "Chandigarh": (30.7333, 76.7794), "Puducherry": (11.9416, 79.8083), "Srinagar": (34.0837, 74.7973), "Jammu": (32.7266, 74.8570)}
 }
 
-# --- SIDEBAR LOGIC ---
-st.sidebar.header("📍 Project Location")
-location_mode = st.sidebar.selectbox("Location Mode", ["Indian Cities", "Current Location", "Manual Coordinates"])
+# --- SIDEBAR: LOCATION SETTINGS ---
+with st.sidebar:
+    st.header("📍 Project Location")
+    location_mode = st.selectbox("Select Location Method", ["Indian Cities", "Current Location", "Manual Coordinates"])
+    
+    # Default values
+    lat, lon = 13.0827, 80.2707 
 
-lat, lon = 13.0827, 80.2707 # Global Default
+    if location_mode == "Indian Cities":
+        state_choice = st.selectbox("Select State", list(indian_cities.keys()))
+        city_choice = st.selectbox("Select City", list(indian_cities[state_choice].keys()))
+        lat, lon = indian_cities[state_choice][city_choice]
+        st.info(f"Lat: {lat}, Lon: {lon}")
 
-if location_mode == "Indian Cities":
-    state = st.sidebar.selectbox("Select State", list(indian_cities.keys()))
-    city = st.sidebar.selectbox("Select City", list(indian_cities[state].keys()))
-    lat, lon = indian_cities[state][city]
-    st.sidebar.write(f"Coordinates: {lat}, {lon}")
+    elif location_mode == "Current Location":
+        st.warning("Ensure browser GPS is enabled.")
+        loc = get_geolocation()
+        if loc:
+            lat = loc['coords']['latitude']
+            lon = loc['coords']['longitude']
+            st.success(f"GPS Active: {lat:.4f}, {lon:.4f}")
+        else:
+            st.info("Waiting for GPS data...")
 
-elif location_mode == "Current Location":
-    loc = get_geolocation()
-    if loc:
-        lat = loc['coords']['latitude']
-        lon = loc['coords']['longitude']
-        st.sidebar.success(f"GPS Found: {lat:.4f}, {lon:.4f}")
+    elif location_mode == "Manual Coordinates":
+        lat = st.number_input("Latitude", value=13.0827, format="%.4f")
+        lon = st.number_input("Longitude", value=80.2707, format="%.4f")
+
+# --- MAIN PAGE: PROJECT INPUT ---
+col1, col2 = st.columns([1.5, 1])
+
+with col1:
+    st.subheader("📋 Project Details")
+    project_title = st.text_input("Project Name", placeholder="e.g., Solar Microgrid for Village X")
+    project_desc = st.text_area("Detailed Description", height=150, placeholder="Describe the energy/sustainability goals...")
+    uploaded_file = st.file_uploader("Attach Project Document (PDF)", type=["pdf"])
+
+with col2:
+    st.subheader("🎯 Result")
+    result_card = st.empty()
+    result_card.info("Enter details and click 'Analyze' to generate score.")
+
+# --- EXECUTION BUTTON ---
+if st.button("🚀 Analyze Sustainability Index"):
+    if project_title and project_desc:
+        with st.spinner('Accessing Meteorological Data & Running Gemini 3.1...'):
+            # REPLACE WITH YOUR ACTUAL MAKE.COM WEBHOOK URL
+            webhook_url = "https://hook.eu1.make.com/8t8duu1vrxtai37lpa8tnqdulxo9mgeu?lat=13.08&lon=80.27&project=SolarPowerPlant"
+            
+            # Prepare data
+            full_context = f"Title: {project_title}\nDescription: {project_desc}"
+            if uploaded_file:
+                full_context += f"\n[Attachment: {uploaded_file.name}]"
+
+            payload = {
+                "lat": lat,
+                "lon": lon,
+                "project": full_context
+            }
+            
+            try:
+                # Sending data to Make.com
+                response = requests.get(webhook_url, params=payload)
+                
+                if response.status_code == 200:
+                    st.balloons()
+                    result_card.success("Analysis Complete")
+                    st.markdown("### AI Report:")
+                    st.write(response.text)
+                else:
+                    st.error("Make.com is not responding. Check your Scheduling Switch.")
+            except Exception as e:
+                st.error(f"Error connecting to API: {e}")
     else:
-        st.sidebar.info("Waiting for browser GPS... (Check for pop-up)")
-
-elif location_mode == "Manual Coordinates":
-    lat = st.sidebar.number_input("Latitude", value=13.08)
-    lon = st.sidebar.number_input("Longitude", value=80.27)
-
-# --- REST OF THE CODE (UI & WEBHOOK) ---
-# ... [Paste your existing UI/Button/Webhook code here] ...
+        st.warning("Please provide both a Project Name and a Description.")
