@@ -12,7 +12,9 @@ def extract_pdf_text(uploaded_file):
         reader = PdfReader(uploaded_file)
         text = ""
         for page in reader.pages:
-            text += page.extract_text()
+            content = page.extract_text()
+            if content:
+                text += content
         return text
     except Exception as e:
         return f"Error reading PDF: {e}"
@@ -135,6 +137,8 @@ st.markdown("---")
 with st.sidebar:
     st.header("📍 Project Location")
     location_mode = st.selectbox("Method", ["Indian Cities", "Current Location"])
+    
+    # Default values
     lat, lon = 13.0827, 80.2707 
 
     if location_mode == "Indian Cities":
@@ -142,47 +146,70 @@ with st.sidebar:
         city_choice = st.selectbox("City", list(indian_cities[state_choice].keys()))
         lat, lon = indian_cities[state_choice][city_choice]
     else:
+        # Note: get_geolocation requires browser permissions
         loc = get_geolocation()
-        if loc: lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
+        if loc: 
+            lat = loc['coords']['latitude']
+            lon = loc['coords']['longitude']
+    
+    st.info(f"Selected Coordinates: {lat}, {lon}")
 
 # --- MAIN PAGE ---
 col1, col2 = st.columns([1.5, 1])
 
 with col1:
     st.subheader("📋 Project Details")
-    project_title = st.text_input("Project Name (Optional if PDF uploaded)")
-    project_desc = st.text_area("Quick Summary (Optional if PDF uploaded)")
-    uploaded_file = st.file_uploader("Upload Project PDF (AI will read the content)", type=["pdf"])
+    project_title = st.text_input("Project Name")
+    project_desc = st.text_area("Quick Summary")
+    uploaded_file = st.file_uploader("Upload Project PDF", type=["pdf"])
 
 with col2:
     st.subheader("🎯 AI Analysis")
-    result_placeholder = st.empty()
+    # This area will update once the button is clicked
 
 # --- EXECUTION LOGIC ---
 if st.button("🚀 Analyze Sustainability Index"):
     if (project_title and project_desc) or uploaded_file:
-        with st.spinner('Reading your PDF and fetching Weather Data...'):
+        with st.spinner('Reading documentation and pulling live climate data...'):
             
-            # --- THE MAGIC PART: EXTRACTING PDF TEXT ---
-            pdf_content = ""
+            # 1. Extract and Sanitize PDF Text
+            pdf_raw = ""
             if uploaded_file:
-                pdf_content = extract_pdf_text(uploaded_file)
+                pdf_raw = extract_pdf_text(uploaded_file)
             
-            # Combine everything to send to Gemini
-            final_context = f"Title: {project_title}\nSummary: {project_desc}\n\nFULL PDF CONTENT:\n{pdf_content}"
+            # Remove symbols that break URL parameters in a GET request
+            clean_pdf = pdf_raw.replace("&", "and").replace("?", "").replace("#", "").strip()
             
+            # Truncate to avoid "URL Too Long" error (GET limit is ~2000 chars)
+            final_context = f"Title: {project_title} | Desc: {project_desc} | PDF: {clean_pdf[:1500]}"
+            
+            # 2. Webhook Setup
             webhook_url = "https://hook.eu1.make.com/8t8duu1vrxtai37lpa8tnqdulxo9mgeu"
-            payload = {"lat": lat, "lon": lon, "project": final_context}
+            
+            # We send lat and lon first to ensure the Weather module reads them correctly
+            payload = {
+                "lat": lat,
+                "lon": lon,
+                "project": final_context
+            }
             
             try:
+                # requests.get with params handles URL encoding for us automatically
                 response = requests.get(webhook_url, params=payload, timeout=60)
+                
                 if response.status_code == 200:
-                    st.balloons()
-                    st.markdown("### 📊 Final Compatibility Report")
-                    st.success(response.text)
+                    # Check for generic "Accepted" response
+                    if response.text.lower() == "accepted":
+                        st.warning("⚠️ Data received by Make.com, but no response was sent back. Ensure you have a 'Webhook Response' module in your scenario.")
+                    else:
+                        st.balloons()
+                        st.markdown("### 📊 Final Compatibility Report")
+                        st.success(response.text)
                 else:
-                    st.error("Make.com Scenario is not responding.")
-            except Exception:
-                st.error("Request timed out. The PDF might be too long for a quick response.")
+                    st.error(f"Error {response.status_code}: {response.text}")
+                    st.info("Check if your Make.com Webhook URL is correct.")
+            
+            except Exception as e:
+                st.error(f"Connection failed: {e}")
     else:
-        st.warning("Please upload a PDF or type project details.")
+        st.warning("Please provide project details or upload a PDF to begin.")
