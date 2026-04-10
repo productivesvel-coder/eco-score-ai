@@ -239,11 +239,35 @@ with col2:
                     st.stop()
                 
                 # 3. Formulate Payload (Lat/Lon go first)
-                payload = {
-                    "lat": lat,
-                    "lon": lon,
-                    "project": final_context
-                }
+                # 3. Formulate Payload (Forcing floats to fix "Wrong Latitude" error)
+                try:
+                    payload = {
+                        "lat": float(lat),
+                        "lon": float(lon),
+                        "project": final_context
+                    }
+                except ValueError:
+                    st.error("Invalid coordinates received. Please check your location selection.")
+                    st.stop()
+                
+                status.update(label="Syncing with Climate Services & AI Model...", state="running")
+                
+                try:
+                    # Send GET request (params safely encodes the text)
+                    response = requests.get(webhook_url, params=payload, timeout=60)
+                    
+                    if response.status_code == 200:
+                        status.update(label="Analysis Complete", state="complete")
+                        
+                        if response.text.lower() == "accepted":
+                            st.info("✅ Data sent! Remember to add a 'Webhook Response' module in Make.com to see the report here.")
+                        else:
+                            st.balloons()
+                            st.markdown("### 📊 Final Compatibility Report")
+                            st.success(response.text)
+                    else:
+                        status.update(label="Connection Error", state="error")
+                        st.error(f"Make.com Error {response.status_code}: {response.text}")
                 
                 status.update(label="Syncing with Climate Services & AI Model...", state="running")
                 
