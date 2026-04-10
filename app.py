@@ -3,10 +3,52 @@ import requests
 from pypdf import PdfReader
 from streamlit_js_eval import get_geolocation
 
-# Page Configuration
-st.set_page_config(page_title="EcoScore AI India", page_icon="🌱", layout="wide")
+# --- PAGE CONFIGURATION ---
+st.set_page_config(
+    page_title="EcoScore AI | Sustainability Index", 
+    page_icon="🌱", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Helper function to extract text from PDF
+# --- CUSTOM PROFESSIONAL CSS ---
+st.markdown("""
+<style>
+    /* Main container styling */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    /* Header styling */
+    .main-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #1E3A8A; /* Professional deep blue */
+        margin-bottom: 0rem;
+    }
+    .sub-title {
+        font-size: 1.1rem;
+        color: #4B5563;
+        margin-bottom: 2rem;
+        font-weight: 400;
+    }
+    /* Enhance the analyze button */
+    .stButton>button {
+        width: 100%;
+        border-radius: 6px;
+        font-weight: 600;
+        padding: 0.5rem 1rem;
+        transition: all 0.3s ease;
+    }
+    /* Section headers */
+    h3 {
+        color: #111827;
+        font-weight: 600;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- HELPER FUNCTIONS ---
 def extract_pdf_text(uploaded_file):
     try:
         reader = PdfReader(uploaded_file)
@@ -130,7 +172,9 @@ indian_cities = {
     }
 }
 
-st.title("🌍 Sustainability Compatibility Index")
+# --- HEADER SECTION ---
+st.markdown('<p class="main-title">🌍 Sustainability Compatibility Index</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Advanced AI evaluation of project viability against localized real-time climate data.</p>', unsafe_allow_html=True)
 st.markdown("---")
 
 # --- SIDEBAR: LOCATION ---
@@ -152,64 +196,80 @@ with st.sidebar:
             lat = loc['coords']['latitude']
             lon = loc['coords']['longitude']
     
-    st.info(f"Selected Coordinates: {lat}, {lon}")
+    st.info(f"**Selected Coordinates:** \n\nLat: {lat} \n\nLon: {lon}")
 
-# --- MAIN PAGE ---
-col1, col2 = st.columns([1.5, 1])
+# --- MAIN PAGE LAYOUT ---
+col1, col2 = st.columns([1.2, 1.2], gap="large")
 
 with col1:
     st.subheader("📋 Project Details")
     project_title = st.text_input("Project Name")
     project_desc = st.text_area("Quick Summary")
     uploaded_file = st.file_uploader("Upload Project PDF", type=["pdf"])
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    analyze_button = st.button("🚀 Analyze Sustainability Index", type="primary")
 
 with col2:
     st.subheader("🎯 AI Analysis")
-    # This area will update once the button is clicked
-
-# --- EXECUTION LOGIC ---
-if st.button("🚀 Analyze Sustainability Index"):
-    if (project_title and project_desc) or uploaded_file:
-        with st.spinner('Reading documentation and pulling live climate data...'):
-            
-            # 1. Extract and Sanitize PDF Text
-            pdf_raw = ""
-            if uploaded_file:
-                pdf_raw = extract_pdf_text(uploaded_file)
-            
-            # Remove symbols that break URL parameters in a GET request
-            clean_pdf = pdf_raw.replace("&", "and").replace("?", "").replace("#", "").strip()
-            
-            # Truncate to avoid "URL Too Long" error (GET limit is ~2000 chars)
-            final_context = f"Title: {project_title} | Desc: {project_desc} | PDF: {clean_pdf[:1500]}"
-            
-            # 2. Webhook Setup
-            webhook_url = "https://hook.eu1.make.com/8t8duu1vrxtai37lpa8tnqdulxo9mgeu"
-            
-            # We send lat and lon first to ensure the Weather module reads them correctly
-            payload = {
-                "lat": lat,
-                "lon": lon,
-                "project": final_context
-            }
-            
-            try:
-                # requests.get with params handles URL encoding for us automatically
-                response = requests.get(webhook_url, params=payload, timeout=60)
+    
+    # --- EXECUTION LOGIC ---
+    if analyze_button:
+        if (project_title and project_desc) or uploaded_file:
+            with st.status("Initializing Analysis...", expanded=True) as status:
                 
-                if response.status_code == 200:
-                    # Check for generic "Accepted" response
-                    if response.text.lower() == "accepted":
-                        st.warning("⚠️ Data received by Make.com, but no response was sent back. Ensure you have a 'Webhook Response' module in your scenario.")
+                # 1. Extract and Sanitize PDF Text
+                status.update(label="Reading documentation...", state="running")
+                pdf_raw = ""
+                if uploaded_file:
+                    pdf_raw = extract_pdf_text(uploaded_file)
+                
+                # Clean symbols that break GET URLs
+                clean_pdf = pdf_raw.replace("&", "and").replace("?", "").replace("#", "").strip()
+                
+                # Truncate to avoid "URL Too Long" error (Limit to ~1500 chars)
+                final_context = f"Title: {project_title} | Desc: {project_desc} | PDF: {clean_pdf[:1500]}"
+                
+                # 2. Get Secure Webhook URL
+                try:
+                    webhook_url = st.secrets["MAKE_WEBHOOK_URL"]
+                except KeyError:
+                    status.update(label="System Configuration Error", state="error")
+                    st.error("Error: MAKE_WEBHOOK_URL not found in Streamlit Secrets.")
+                    st.stop()
+                
+                # 3. Formulate Payload (Lat/Lon go first)
+                payload = {
+                    "lat": lat,
+                    "lon": lon,
+                    "project": final_context
+                }
+                
+                status.update(label="Syncing with Climate Services & AI Model...", state="running")
+                
+                try:
+                    # Send GET request (params safely encodes the text)
+                    response = requests.get(webhook_url, params=payload, timeout=60)
+                    
+                    if response.status_code == 200:
+                        status.update(label="Analysis Complete", state="complete")
+                        
+                        if response.text.lower() == "accepted":
+                            st.warning("⚠️ Data received by the server, but no response was returned. Ensure the response module is active.")
+                        else:
+                            st.balloons()
+                            st.success(response.text)
                     else:
-                        st.balloons()
-                        st.markdown("### 📊 Final Compatibility Report")
-                        st.success(response.text)
-                else:
-                    st.error(f"Error {response.status_code}: {response.text}")
-                    st.info("Check if your Make.com Webhook URL is correct.")
-            
-            except Exception as e:
-                st.error(f"Connection failed: {e}")
+                        status.update(label="Connection Error", state="error")
+                        st.error(f"Server returned error code {response.status_code}: {response.text}")
+                
+                except requests.exceptions.Timeout:
+                    status.update(label="Timeout", state="error")
+                    st.error("Request timed out. The data payload might be too large.")
+                except Exception as e:
+                    status.update(label="Failed", state="error")
+                    st.error(f"Connection failed: {e}")
+        else:
+            st.warning("Please provide project details or upload a project PDF to begin the analysis.")
     else:
-        st.warning("Please provide project details or upload a PDF to begin.")
+        st.info("Awaiting input. Fill out the project details on the left and click **Analyze Sustainability Index** to generate your report.")
