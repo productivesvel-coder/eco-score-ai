@@ -227,7 +227,7 @@ with col2:
                 # Clean symbols that break GET URLs
                 clean_pdf = pdf_raw.replace("&", "and").replace("?", "").replace("#", "").strip()
                 
-                # Truncate to avoid "URL Too Long" error (Limit to ~1500 chars)
+                # Truncate context to keep URL length safe
                 final_context = f"Title: {project_title} | Desc: {project_desc} | PDF: {clean_pdf[:1500]}"
                 
                 # 2. Get Secure Webhook URL
@@ -238,8 +238,7 @@ with col2:
                     st.error("Error: MAKE_WEBHOOK_URL not found in Streamlit Secrets.")
                     st.stop()
                 
-                # 3. Formulate Payload (Lat/Lon go first)
-                # 3. Formulate Payload (Forcing floats to fix "Wrong Latitude" error)
+                # 3. Formulate Payload (Forced floats to fix Weather API Errors)
                 try:
                     payload = {
                         "lat": float(lat),
@@ -247,53 +246,36 @@ with col2:
                         "project": final_context
                     }
                 except ValueError:
-                    st.error("Invalid coordinates received. Please check your location selection.")
+                    status.update(label="Coordinate Error", state="error")
+                    st.error("Invalid latitude or longitude data.")
                     st.stop()
                 
                 status.update(label="Syncing with Climate Services & AI Model...", state="running")
                 
                 try:
-                    # Send GET request (params safely encodes the text)
+                    # Send GET request
                     response = requests.get(webhook_url, params=payload, timeout=60)
                     
                     if response.status_code == 200:
                         status.update(label="Analysis Complete", state="complete")
                         
                         if response.text.lower() == "accepted":
-                            st.info("✅ Data sent! Remember to add a 'Webhook Response' module in Make.com to see the report here.")
+                            st.warning("⚠️ Data received, but no response content. Ensure Make.com has a Webhook Response module.")
                         else:
                             st.balloons()
                             st.markdown("### 📊 Final Compatibility Report")
                             st.success(response.text)
                     else:
-                        status.update(label="Connection Error", state="error")
+                        status.update(label="Execution Error", state="error")
                         st.error(f"Make.com Error {response.status_code}: {response.text}")
-                
-                status.update(label="Syncing with Climate Services & AI Model...", state="running")
-                
-                try:
-                    # Send GET request (params safely encodes the text)
-                    response = requests.get(webhook_url, params=payload, timeout=60)
-                    
-                    if response.status_code == 200:
-                        status.update(label="Analysis Complete", state="complete")
-                        
-                        if response.text.lower() == "accepted":
-                            st.warning("⚠️ Data received by the server, but no response was returned. Ensure the response module is active.")
-                        else:
-                            st.balloons()
-                            st.success(response.text)
-                    else:
-                        status.update(label="Connection Error", state="error")
-                        st.error(f"Server returned error code {response.status_code}: {response.text}")
                 
                 except requests.exceptions.Timeout:
                     status.update(label="Timeout", state="error")
-                    st.error("Request timed out. The data payload might be too large.")
+                    st.error("The analysis took too long. Try reducing PDF content.")
                 except Exception as e:
-                    status.update(label="Failed", state="error")
-                    st.error(f"Connection failed: {e}")
+                    status.update(label="Connection Failed", state="error")
+                    st.error(f"Failed to reach processing server: {e}")
         else:
-            st.warning("Please provide project details or upload a project PDF to begin the analysis.")
+            st.warning("Please provide project details or upload a project PDF to begin.")
     else:
         st.info("Awaiting input. Fill out the project details on the left and click **Analyze Sustainability Index** to generate your report.")
