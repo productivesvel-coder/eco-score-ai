@@ -227,8 +227,9 @@ with col2:
                 # Clean symbols that break GET URLs
                 clean_pdf = pdf_raw.replace("&", "and").replace("?", "").replace("#", "").strip()
                 
-                # Truncate context to keep URL length safe
-                final_context = f"Title: {project_title} | Desc: {project_desc} | PDF: {clean_pdf[:1500]}"
+                # Truncate context heavily (800 chars) to prevent Webhook URL truncation
+                # If the URL gets too long, Make.com drops the latitude parameter at the end!
+                final_context = f"Title: {project_title} | Desc: {project_desc} | PDF: {clean_pdf[:800]}"
                 
                 # 2. Get Secure Webhook URL
                 try:
@@ -238,11 +239,15 @@ with col2:
                     st.error("Error: MAKE_WEBHOOK_URL not found in Streamlit Secrets.")
                     st.stop()
                 
-                # 3. Formulate Payload (Forced floats to fix Weather API Errors)
+                # 3. Formulate Payload
+                # Strictly format floats to 4 decimal places as strings to ensure OpenWeather accepts them.
                 try:
+                    safe_lat = f"{float(lat):.4f}"
+                    safe_lon = f"{float(lon):.4f}"
+                    
                     payload = {
-                        "lat": float(lat),
-                        "lon": float(lon),
+                        "lat": safe_lat,
+                        "lon": safe_lon,
                         "project": final_context
                     }
                 except ValueError:
@@ -253,7 +258,7 @@ with col2:
                 status.update(label="Syncing with Climate Services & AI Model...", state="running")
                 
                 try:
-                    # Send GET request
+                    # Send GET request safely
                     response = requests.get(webhook_url, params=payload, timeout=60)
                     
                     if response.status_code == 200:
@@ -262,9 +267,13 @@ with col2:
                         if response.text.lower() == "accepted":
                             st.warning("⚠️ Data received, but no response content. Ensure Make.com has a Webhook Response module.")
                         else:
-                            st.balloons()
-                            st.markdown("### 📊 Final Compatibility Report")
-                            st.success(response.text)
+                            # If Make.com returns the exact OpenWeather "wrong latitude" error text, catch it:
+                            if "wrong latitude" in response.text.lower():
+                                st.error("❌ Make.com failed to parse the location. Try shortening your project description further.")
+                            else:
+                                st.balloons()
+                                st.markdown("### 📊 Final Compatibility Report")
+                                st.success(response.text)
                     else:
                         status.update(label="Execution Error", state="error")
                         st.error(f"Make.com Error {response.status_code}: {response.text}")
