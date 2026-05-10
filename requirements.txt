@@ -1,3 +1,6 @@
+streamlit
 requests
-streamlit-js-eval
 pypdf
+streamlit-js-eval
+folium
+streamlit-folium
