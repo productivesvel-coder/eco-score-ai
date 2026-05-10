@@ -2,6 +2,8 @@ import streamlit as st
 import requests
 from pypdf import PdfReader
 from streamlit_js_eval import get_geolocation
+import folium
+from streamlit_folium import st_folium
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -14,16 +16,14 @@ st.set_page_config(
 # --- CUSTOM PROFESSIONAL CSS ---
 st.markdown("""
 <style>
-    /* Main container styling */
     .block-container {
         padding-top: 2rem;
         padding-bottom: 2rem;
     }
-    /* Header styling */
     .main-title {
         font-size: 2.5rem;
         font-weight: 700;
-        color: #1E3A8A; /* Professional deep blue */
+        color: #1E3A8A;
         margin-bottom: 0rem;
     }
     .sub-title {
@@ -32,7 +32,6 @@ st.markdown("""
         margin-bottom: 2rem;
         font-weight: 400;
     }
-    /* Enhance the analyze button */
     .stButton>button {
         width: 100%;
         border-radius: 6px;
@@ -40,7 +39,6 @@ st.markdown("""
         padding: 0.5rem 1rem;
         transition: all 0.3s ease;
     }
-    /* Section headers */
     h3 {
         color: #111827;
         font-weight: 600;
@@ -180,23 +178,36 @@ st.markdown("---")
 # --- SIDEBAR: LOCATION ---
 with st.sidebar:
     st.header("📍 Project Location")
-    location_mode = st.selectbox("Method", ["Indian Cities", "Current Location"])
+    location_mode = st.selectbox("Method", ["Indian Cities", "Interactive Map", "Current Location"])
     
-    # Default values
-    lat, lon = 13.0827, 80.2707 
+    lat, lon = 13.0827, 80.2707 # Default Chennai
 
     if location_mode == "Indian Cities":
         state_choice = st.selectbox("State", list(indian_cities.keys()))
         city_choice = st.selectbox("City", list(indian_cities[state_choice].keys()))
         lat, lon = indian_cities[state_choice][city_choice]
+    
+    elif location_mode == "Interactive Map":
+        st.write("Click on the map to set project coordinates:")
+        # Create a map centered on India
+        m = folium.Map(location=[20.5937, 78.9629], zoom_start=4)
+        m.add_child(folium.LatLngPopup()) # Shows lat/lon on click
+        
+        # Render map and capture click data
+        map_data = st_folium(m, height=300, width=250)
+        
+        if map_data and map_data.get("last_clicked"):
+            lat = map_data["last_clicked"]["lat"]
+            lon = map_data["last_clicked"]["lng"]
+            st.success(f"Selected: {lat:.4f}, {lon:.4f}")
+            
     else:
-        # Note: get_geolocation requires browser permissions
         loc = get_geolocation()
         if loc: 
             lat = loc['coords']['latitude']
             lon = loc['coords']['longitude']
     
-    st.info(f"**Selected Coordinates:** \n\nLat: {lat} \n\nLon: {lon}")
+    st.info(f"**Final Coordinates:** \n\nLat: {lat} \n\nLon: {lon}")
 
 # --- MAIN PAGE LAYOUT ---
 col1, col2 = st.columns([1.2, 1.2], gap="large")
@@ -213,78 +224,46 @@ with col1:
 with col2:
     st.subheader("🎯 AI Analysis")
     
-    # --- EXECUTION LOGIC ---
     if analyze_button:
         if (project_title and project_desc) or uploaded_file:
             with st.status("Initializing Analysis...", expanded=True) as status:
                 
                 # 1. Extract and Sanitize PDF Text
                 status.update(label="Reading documentation...", state="running")
-                pdf_raw = ""
-                if uploaded_file:
-                    pdf_raw = extract_pdf_text(uploaded_file)
-                
-                # Clean symbols that break GET URLs
+                pdf_raw = extract_pdf_text(uploaded_file) if uploaded_file else ""
                 clean_pdf = pdf_raw.replace("&", "and").replace("?", "").replace("#", "").strip()
                 
-                # Truncate context heavily (800 chars) to prevent Webhook URL truncation
-                # If the URL gets too long, Make.com drops the latitude parameter at the end!
+                # Truncate context to 800 chars to prevent Webhook truncation
                 final_context = f"Title: {project_title} | Desc: {project_desc} | PDF: {clean_pdf[:800]}"
                 
                 # 2. Get Secure Webhook URL
                 try:
                     webhook_url = st.secrets["MAKE_WEBHOOK_URL"]
                 except KeyError:
-                    status.update(label="System Configuration Error", state="error")
                     st.error("Error: MAKE_WEBHOOK_URL not found in Streamlit Secrets.")
                     st.stop()
                 
-                # 3. Formulate Payload
-                # Strictly format floats to 4 decimal places as strings to ensure OpenWeather accepts them.
-                try:
-                    safe_lat = f"{float(lat):.4f}"
-                    safe_lon = f"{float(lon):.4f}"
-                    
-                    payload = {
-                        "lat": safe_lat,
-                        "lon": safe_lon,
-                        "project": final_context
-                    }
-                except ValueError:
-                    status.update(label="Coordinate Error", state="error")
-                    st.error("Invalid latitude or longitude data.")
-                    st.stop()
+                # 3. Formulate Payload (Formatted as strings with 4 decimals to avoid OpenWeather errors)
+                safe_lat = f"{float(lat):.4f}"
+                safe_lon = f"{float(lon):.4f}"
+                
+                payload = {"lat": safe_lat, "lon": safe_lon, "project": final_context}
                 
                 status.update(label="Syncing with Climate Services & AI Model...", state="running")
                 
                 try:
-                    # Send GET request safely
                     response = requests.get(webhook_url, params=payload, timeout=60)
-                    
                     if response.status_code == 200:
                         status.update(label="Analysis Complete", state="complete")
-                        
-                        if response.text.lower() == "accepted":
-                            st.warning("⚠️ Data received, but no response content. Ensure Make.com has a Webhook Response module.")
+                        if "wrong latitude" in response.text.lower():
+                            st.error("❌ Location Error. Try clicking closer to a landmass on the map.")
                         else:
-                            # If Make.com returns the exact OpenWeather "wrong latitude" error text, catch it:
-                            if "wrong latitude" in response.text.lower():
-                                st.error("❌ Make.com failed to parse the location. Try shortening your project description further.")
-                            else:
-                                st.balloons()
-                                st.markdown("### 📊 Final Compatibility Report")
-                                st.success(response.text)
+                            st.balloons()
+                            st.markdown("### 📊 Final Compatibility Report")
+                            st.success(response.text)
                     else:
-                        status.update(label="Execution Error", state="error")
-                        st.error(f"Make.com Error {response.status_code}: {response.text}")
-                
-                except requests.exceptions.Timeout:
-                    status.update(label="Timeout", state="error")
-                    st.error("The analysis took too long. Try reducing PDF content.")
+                        st.error(f"Make.com Error {response.status_code}")
                 except Exception as e:
-                    status.update(label="Connection Failed", state="error")
-                    st.error(f"Failed to reach processing server: {e}")
+                    st.error(f"Connection Failed: {e}")
         else:
-            st.warning("Please provide project details or upload a project PDF to begin.")
-    else:
-        st.info("Awaiting input. Fill out the project details on the left and click **Analyze Sustainability Index** to generate your report.")
+            st.warning("Please provide project details.")
