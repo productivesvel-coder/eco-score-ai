@@ -349,7 +349,7 @@ with col1:
         st.markdown("<br>", unsafe_allow_html=True)
         analyze_button = st.button("🚀 Run AI Analysis")
 
-# UI Polish: Wrapping the outputs in a container and removing the expander/status dropdown
+# UI Polish: Wrapping the outputs in a container 
 with col2:
     with st.container(border=True):
         st.subheader("🎯 AI Analysis Report")
@@ -381,11 +381,10 @@ with col2:
                             if "wrong latitude" in response.text.lower():
                                 st.error("❌ Location Error: Make sure your coordinates represent a valid geographic location.")
                             else:
-                                # The output is now displayed directly on the screen!
                                 st.balloons()
                                 st.success("Analysis Complete!")
                                 st.markdown("---")
-                                st.markdown(response.text) # Prints the Gemini output beautifully
+                                st.markdown(response.text) 
                         else:
                             st.error(f"Make.com Error {response.status_code}")
                             
